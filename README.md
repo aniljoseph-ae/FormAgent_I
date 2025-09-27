@@ -47,7 +47,7 @@ OCR Issues: Ensure Tesseract and Poppler are in PATH.
 ChromaDB Corruption: Clear data/chroma_db/:rm -rf data/chroma_db/*
 
 
-
+```markdown
 Directory Structure
 AI_Scanner_IV_Langgraph_RAG_vectrdb/
 ├── .env
@@ -77,4 +77,5 @@ AI_Scanner_IV_Langgraph_RAG_vectrdb/
 ├── docs/
 │   ├── README.md
 
+```
 
