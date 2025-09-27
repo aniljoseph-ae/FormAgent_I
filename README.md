@@ -91,13 +91,13 @@ Intelligent_Form_Agent/
 ### Setup
 1. **Clone Repository**:
    ```bash
-   git clone <repo_url>
+   git clone https://github.com/aniljoseph-ae/FormAgent_I.git
    cd Intelligent_Form_Agent
    ```
 
 2. **Create Environment**:
    ```bash
-   conda create -n form_agent python=3.12
+   conda create -n form_agent python=3.10
    conda activate form_agent
    ```
 
@@ -279,3 +279,4 @@ MIT License. See `LICENSE` for details.
 For support, contact the developer via the repository or [xAI Community](https://x.ai/community).
 
 *Version 1.0, September 27, 2025*
+
