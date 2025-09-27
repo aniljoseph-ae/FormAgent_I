@@ -1,137 +1,241 @@
 # core/document_processor.py
 
-import fitz # PyMuPDF
-from docx import Document as DocxDocument
-import json
-from typing import List, Optional, Dict, Any
-from pathlib import Path
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
-import hashlib
-from config.schema import DocumentSchema, ChunkSchema, DocumentType, ProcessingStatus
+
+from typing import Tuple, List
 from config.config import config_manager
+from config.schema import DocumentSchema, ChunkSchema, DocumentType
+from pathlib import Path
+import logging
+import re
+import uuid
+from datetime import datetime
+import pypdf
+import docx
+import json
+import pytesseract
+from PIL import Image
+import io
+import os
+
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class DocumentProcessor:
-    """Advanced document processor with semantic chunking"""
-   
     def __init__(self):
         self.config = config_manager.get_validated_config()
-        self.embedding_model = SentenceTransformer(
-            self.config.embedding_config['model'],
-            device=self.config.embedding_config['device']
-        )
-       
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.config.rag_config.get('chunk_size', 512),
-            chunk_overlap=self.config.rag_config.get('chunk_overlap', 50),
-            length_function=len,
-            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""]
-        )
-   
-    def generate_document_id(self, file_path: str) -> str:
-        """Generate unique document ID from file path and content"""
-        file_hash = hashlib.md5(Path(file_path).read_bytes()).hexdigest()
-        return f"doc_{file_hash[:16]}"
-   
-    def extract_text(self, file_path: str, file_type: DocumentType) -> str:
-        """Extract text from various document formats"""
         try:
+            self.chunk_size = self.config.rag_config.get('chunk_size', 512)
+            self.chunk_overlap = self.config.rag_config.get('chunk_overlap', 50)
+            self.max_chunks = self.config.rag_config.get('max_chunks_per_doc', 100)
+        except AttributeError as e:
+            logger.warning(f"Missing rag_config: {str(e)}. Using defaults.")
+            self.chunk_size = 512
+            self.chunk_overlap = 50
+            self.max_chunks = 100
+    
+    def extract_text(self, file_path: str, file_type: str) -> str:
+        try:
+            file_path = Path(file_path)
             if file_type == DocumentType.PDF:
-                return self._extract_pdf_text(file_path)
+                with open(file_path, 'rb') as file:
+                    reader = pypdf.PdfReader(file)
+                    text = "".join(page.extract_text() or "" for page in reader.pages)
+                    if not text.strip():
+                        logger.info(f"No text extracted from {file_path}. Attempting OCR.")
+                        text = self._ocr_pdf(file_path)
             elif file_type == DocumentType.DOCX:
-                return self._extract_docx_text(file_path)
+                doc = docx.Document(file_path)
+                text = "\n".join(paragraph.text for paragraph in doc.paragraphs if paragraph.text)
             elif file_type == DocumentType.TXT:
-                return self._extract_txt_text(file_path)
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    text = file.read()
             elif file_type == DocumentType.JSON:
-                return self._extract_json_text(file_path)
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    data = json.load(file)
+                    text = json.dumps(data, indent=2)
+            elif file_type == DocumentType.JPG:
+                text = self._ocr_image(file_path)
             else:
                 raise ValueError(f"Unsupported file type: {file_type}")
+            return text
         except Exception as e:
-            raise Exception(f"Text extraction failed for {file_path}: {str(e)}")
-   
-    def _extract_pdf_text(self, file_path: str) -> str:
-        """Extract text from PDF with formatting preservation"""
-        doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            text += page.get_text("text") + "\n"
-        doc.close()
-        return text
-   
-    def _extract_docx_text(self, file_path: str) -> str:
-        """Extract text from DOCX document"""
-        doc = DocxDocument(file_path)
-        return "\n".join([paragraph.text for paragraph in doc.paragraphs])
-   
-    def _extract_txt_text(self, file_path: str) -> str:
-        """Extract text from plain text file"""
-        with open(file_path, 'r', encoding='utf-8') as file:
-            return file.read()
-   
-    def _extract_json_text(self, file_path: str) -> str:
-        """Extract text from JSON file"""
-        with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        return json.dumps(data, indent=2)
-   
-    def chunk_document(self, text: str, document_id: str) -> List[ChunkSchema]:
-        """Chunk document text semantically"""
-        chunks = self.text_splitter.split_text(text)
-       
-        chunk_schemas = []
-        for i, chunk_text in enumerate(chunks):
-            chunk_id = f"{document_id}_chunk_{i:04d}"
-           
-            chunk_schema = ChunkSchema(
-                id=chunk_id,
-                document_id=document_id,
-                content=chunk_text,
-                chunk_index=i,
+            logger.error(f"Text extraction failed for {file_path}: {str(e)}")
+            raise
+    
+    def _ocr_image(self, file_path: Path) -> str:
+        try:
+            image = Image.open(file_path)
+            text = pytesseract.image_to_string(image)
+            return text
+        except Exception as e:
+            logger.error(f"OCR failed for {file_path}: {str(e)}")
+            return ""
+    
+    def _ocr_pdf(self, file_path: Path) -> str:
+        try:
+            from pdf2image import convert_from_path
+            images = convert_from_path(file_path)
+            text = ""
+            for image in images:
+                text += pytesseract.image_to_string(image) + "\n"
+            return text
+        except Exception as e:
+            logger.error(f"PDF OCR failed for {file_path}: {str(e)}")
+            return ""
+    
+    def extract_structured_data(self, text: str, filename: str) -> dict:
+        structured_data = {
+            'fields': {},
+            'entities': {'DATE': [], 'PERSON': [], 'ORGANIZATION': []},
+            'transactions': [],
+            'errors': []
+        }
+        
+        field_patterns = {
+            'statement_period': r"Statement Period: ([\d-]+ to [\d-]+)",
+            'account_number': r"Account Number: (\*+\d+)",
+            'account_holder': r"Account Holder: ([\w\s#]+)",
+            'opening_balance': r"Opening Balance: \$([\d,.]+)",
+            'closing_balance': r"Closing Balance: \$([\d,.]+)",
+            'total_deposits': r"Total Deposits: \$([\d,.]+)",
+            'total_withdrawals': r"Total Withdrawals: \$([\d,.]+)",
+            'credit_score': r"Credit Score: (\d+)",
+            'name': r"Name: (\w+\s\w+)",
+            'email': r"Email: ([\w\.-]+@[\w\.-]+)",
+            'amount': r"Amount: \$([\d,.]+)"
+        }
+        
+        for key, pattern in field_patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                structured_data['fields'][key] = match.group(1).strip()
+        
+        transaction_pattern = r"Date: ([\d-]+)\s*\|\s*Description: ([^\|]+)\s*\|\s*Amount: ([+-]\$[\d,.]+)"
+        transactions = re.findall(transaction_pattern, text, re.IGNORECASE)
+        for date, desc, amount in transactions:
+            structured_data['transactions'].append({
+                'date': date.strip(),
+                'description': desc.strip(),
+                'amount': amount.strip()
+            })
+        
+        date_pattern = r"\d{4}-\d{2}-\d{2}"
+        person_pattern = r"Client #(\d+)|Name: (\w+\s\w+)"
+        org_pattern = r"(?:LLC|Inc|Corp)\.?\b"
+        
+        structured_data['entities']['DATE'] = re.findall(date_pattern, text)
+        person_matches = re.findall(person_pattern, text)
+        structured_data['entities']['PERSON'] = [m[0] or m[1] for m in person_matches if m[0] or m[1]]
+        structured_data['entities']['ORGANIZATION'] = re.findall(org_pattern, text)
+        
+        return structured_data
+    
+    def process_document(self, file_path: str) -> Tuple[DocumentSchema, List[ChunkSchema]]:
+        try:
+            file_path = Path(file_path)
+            file_type = self._get_file_type(file_path)
+            file_size = file_path.stat().st_size
+            
+            text = self.extract_text(str(file_path), file_type)
+            structured_data = self.extract_structured_data(text, file_path.name)
+            
+            document_id = f"doc_{uuid.uuid4().hex[:16]}"
+            document = DocumentSchema(
+                id=document_id,
+                filename=file_path.name,
+                file_path=str(file_path),
+                file_type=file_type,
+                file_size=file_size,
+                upload_date=datetime.now(),
+                processing_status="completed",
                 metadata={
-                    "chunk_length": len(chunk_text),
-                    "word_count": len(chunk_text.split()),
-                    "has_entities": bool(self._detect_entities(chunk_text))
+                    'extracted_text': text,
+                    'structured_data': structured_data,
+                    'chunk_count': 0
                 }
             )
-            chunk_schemas.append(chunk_schema)
-       
-        return chunk_schemas
-   
-    def _detect_entities(self, text: str) -> List[str]:
-        """Simple entity detection (can be enhanced with NER)"""
-        # Basic implementation - can be replaced with spaCy or similar
-        entities = []
-        # Add simple entity detection logic here
-        return entities
-   
-    def process_document(self, file_path: str) -> DocumentSchema:
-        """Complete document processing pipeline"""
-        file_path = Path(file_path)
-        file_type = DocumentType(file_path.suffix.lower()[1:])
-       
-        # Generate document schema
-        doc_id = self.generate_document_id(str(file_path))
-        document = DocumentSchema(
-            id=doc_id,
-            filename=file_path.name,
-            file_path=str(file_path),
-            file_type=file_type,
-            file_size=file_path.stat().st_size,
-            processing_status=ProcessingStatus.PROCESSING
-        )
-       
-        try:
-            # Extract text
-            text = self.extract_text(str(file_path), file_type)
-            document.metadata["extracted_text_length"] = len(text)
-           
-            # Chunk document
-            chunks = self.chunk_document(text, doc_id)
-            document.metadata["chunk_count"] = len(chunks)
-            document.processing_status = ProcessingStatus.COMPLETED
-           
+            
+            chunks = self._chunk_text(text, document_id)
+            document.metadata['chunk_count'] = len(chunks)
+            
+            logger.info(f"Processed {file_path.name}: {len(chunks)} chunks")
             return document, chunks
-           
+        
         except Exception as e:
-            document.processing_status = ProcessingStatus.FAILED
-            document.metadata["error"] = str(e)
-            raise e
+            logger.error(f"Document processing failed for {file_path}: {str(e)}")
+            document = DocumentSchema(
+                id=f"doc_{uuid.uuid4().hex[:16]}",
+                filename=file_path.name,
+                file_path=str(file_path),
+                file_type=file_type,
+                file_size=file_size,
+                upload_date=datetime.now(),
+                processing_status="failed",
+                metadata={'error': str(e)}
+            )
+            return document, []
+    
+    def _get_file_type(self, file_path: Path) -> str:
+        ext = file_path.suffix.lower()
+        if ext == '.pdf':
+            return DocumentType.PDF
+        elif ext == '.docx':
+            return DocumentType.DOCX
+        elif ext == '.txt':
+            return DocumentType.TXT
+        elif ext == '.json':
+            return DocumentType.JSON
+        elif ext in ['.jpg', '.jpeg']:
+            return DocumentType.JPG
+        elif ext in ['.png',]:
+            return DocumentType.JPG
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
+    
+    def _chunk_text(self, text: str, document_id: str) -> List[ChunkSchema]:
+        try:
+            chunks = []
+            words = text.split()
+            current_chunk = []
+            current_length = 0
+            chunk_index = 0
+            
+            for word in words:
+                word_length = len(word) + 1
+                if current_length + word_length <= self.chunk_size:
+                    current_chunk.append(word)
+                    current_length += word_length
+                else:
+                    chunk_text = " ".join(current_chunk)
+                    if chunk_text.strip():
+                        chunks.append(ChunkSchema(
+                            id=f"chunk_{uuid.uuid4().hex[:16]}",
+                            document_id=document_id,
+                            content=chunk_text,
+                            chunk_index=chunk_index,
+                            metadata={}
+                        ))
+                        chunk_index += 1
+                    current_chunk = [word]
+                    current_length = word_length
+                
+                if len(chunks) >= self.max_chunks:
+                    break
+            
+            if current_chunk and len(chunks) < self.max_chunks:
+                chunk_text = " ".join(current_chunk)
+                if chunk_text.strip():
+                    chunks.append(ChunkSchema(
+                        id=f"chunk_{uuid.uuid4().hex[:16]}",
+                        document_id=document_id,
+                        content=chunk_text,
+                        chunk_index=chunk_index,
+                        metadata={}
+                    ))
+            
+            return chunks
+        except Exception as e:
+            logger.error(f"Chunking failed: {str(e)}")
+            return []
