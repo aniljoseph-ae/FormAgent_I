@@ -1,43 +1,40 @@
 # config/config.yaml
 
-# System Configuration
 system:
   name: "RAG-Augmented Agentic Document AI System"
   version: "1.0.0"
   log_level: "INFO"
-# LLM Configuration
+
 llm:
   provider: "groq"
-  model: "llama3-8b-8192"
+  model: "llama-3.1-8b-instant"
   api_key: "${GROQ_API_KEY}"
   temperature: 0.1
   max_tokens: 2048
-# Embeddings Configuration
+
 embeddings:
   model: "sentence-transformers/all-MiniLM-L6-v2"
   device: "cpu"
   batch_size: 32
-# Vector Store Configuration
+
 vector_store:
   type: "chroma"
   persist_directory: "./data/chroma_db"
   collection_name: "document_chunks"
-# Document Processing
-document_processing:
+
+rag_config:
   chunk_size: 512
   chunk_overlap: 50
-  max_chunks_per_document: 100
-# RAG Configuration
-rag:
+  max_chunks_per_doc: 100
   top_k: 5
   similarity_threshold: 0.7
   enable_hybrid_search: true
-# Agent Configuration
+
 agent:
   max_iterations: 5
   enable_reflection: true
   timeout_seconds: 30
-# Evaluation Configuration
+
 evaluation:
   ragas:
     metrics:
@@ -51,7 +48,9 @@ evaluation:
       - "FaithfulnessMetric"
       - "ContextualRecallMetric"
       - "ContextualPrecisionMetric"
-# Paths
+  evaluation_model: "llama-3.1-8b-instant"
+  evaluation_api_key: "${GROQ_API_KEY}"
+
 paths:
   data_directory: "./data"
   evaluations_directory: "./evaluations"
