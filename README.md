@@ -276,7 +276,7 @@ MIT License. See `LICENSE` for details.
 
 ## Contact
 
-For support, contact the developer via the repository or [xAI Community](https://x.ai/community).
+For support, contact the developer via the repository or [Anil Joseph](aniljoseph_ae@aniljoseph-ae).
 
 *Version 1.0, September 27, 2025*
 
