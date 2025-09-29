@@ -1,235 +1,248 @@
 # Intelligent Form Agent
 
-### Overview
-The Intelligent Form Agent is a robust, AI-powered web application designed for processing, analyzing, and interacting with forms (PDF, DOCX, TXT, JSON, JPG, PNG). Built with Streamlit, LangChain, LangGraph, and Groq's llama-3.1 models, it leverages Retrieval-Augmented Generation (RAG) to extract structured data (fields, entities, tables), answer questions, generate summaries, and perform holistic cross-document analysis. The app uses ChromaDB for vector storage, pytesseract for OCR, and spaCy for entity extraction, achieving ~85% accuracy on printed forms and 0.85+ faithfulness on queries (as of September 27, 2025).
-Key features include:
+## Overview
 
-Document Processing: Extracts text, fields (e.g., name, date), entities (PERSON, DATE), and tables from various formats.
-Interactive Chat: Supports QA, summarization, and holistic analysis with a Grok-like UI.
-Evaluation & Debugging: Tracks RAGAS/DeepEval metrics and logs for reliability.
-Modular Design: Extensible for future enhancements like LoRA fine-tuning and multimodal LLMs.
+The **Intelligent Form Agent** is a robust, AI-powered web application designed for processing, analyzing, and interacting with forms in multiple formats (PDF, DOCX, TXT, JPG, PNG). Built with Streamlit, LangChain, LangGraph, and Groq's `llama-3.1` models, it leverages Retrieval-Augmented Generation (RAG) to extract structured data (fields, entities, tables), answer questions, generate summaries, and perform holistic cross-document analysis. The app uses ChromaDB for vector storage, pytesseract for OCR, and spaCy for entity extraction, achieving approximately 85% accuracy on printed forms and 0.85+ faithfulness on queries as of September 27, 2025.
 
-The app is ideal for automating form processing in domains like finance, legal, and administration, with ongoing improvements to enhance OCR and NLP capabilities.
-Features
-Document Management
+### Key Features
+- **Document Processing**: Extracts text, fields (e.g., `name`, `date`), entities (e.g., PERSON, DATE), and tables from various formats.
+- **Interactive Chat**: Supports question answering (QA), summarization, and holistic analysis with a Grok-like chat interface.
+- **Evaluation & Debugging**: Tracks RAGAS/DeepEval metrics and logs for reliability and transparency (planned, see Updates).
+- **Modular Design**: Extensible for future enhancements like LoRA fine-tuning and multimodal LLMs.
 
-Supported Formats: PDF, DOCX, TXT, JPG, PNG (with OCR via pytesseract).
-Extraction: Text, structured fields (e.g., account_holder: Client #35192), entities (e.g., PERSON, DATE), and tables.
-Storage: Chunks documents (500 tokens, 50 overlap) and embeds them in ChromaDB using all-MiniLM-L6-v2.
-Previews: Markdown tables for fields, entities, and tables; LaTeX export option.
+The app is ideal for automating form processing in domains such as finance, legal, and administration, with ongoing improvements to enhance OCR and NLP capabilities.
 
-Chat Interface
+## Features
 
-Multi-Page UI: Streamlit app with "Chat" and "Evaluation & Debugging" pages (planned, see Updates).
-Query Types:
-QA: "What is the balance?" → "$6,593".
-Summarization: "Summarize financial_statement.pdf" → Concise overview with key details.
-Holistic Analysis: "Compare names across documents" → Cross-document insights.
+### Document Management
+- **Supported Formats**: PDF, DOCX, TXT, JPG, PNG (with OCR via pytesseract).
+- **Extraction**: Extracts raw text, structured fields (e.g., `account_holder: Client #35192`), entities (e.g., PERSON, DATE, ORGANIZATION), and tables.
+- **Storage**: Chunks documents into 500-token segments with 50-token overlap, embeds them in ChromaDB using `all-MiniLM-L6-v2`.
+- **Previews**: Generates markdown tables for fields, entities, and tables; supports LaTeX export for forms.
 
+### Chat Interface
+- **Current UI**: Single-page Streamlit app with a sidebar for document uploads and multiselect for analysis; chat interface with history.
+- **Query Types**:
+  - **QA**: Example: "What is the balance?" → "$6,593".
+  - **Summarization**: Example: "Summarize financial_statement.pdf" → Concise overview with key details (~100-150 words).
+  - **Holistic Analysis**: Example: "Compare names across documents" → Cross-document insights (e.g., "financial_statement.pdf: Client #35192, sample_test2.txt: [Name]").
+- **Contextual Responses**: Uses retrieved chunks and chat history for accurate, context-aware answers.
 
-Contextual Responses: Uses retrieved chunks and chat history for accurate answers.
+### Evaluation & Debugging
+- **Metrics**: Planned integration of RAGAS (relevancy, faithfulness, precision/recall) and retrieval metrics (F1).
+- **Logs**: File-based logging to `logs/app.log` (requires file handler setup in `logger_config.py`).
+- **Explainability**: Planned display of retrieved chunks with similarity distances and query metadata.
 
-Evaluation & Debugging
+### Current Performance
+- **OCR Accuracy**: ~85% on printed text, ~70% on handwritten text (pytesseract).
+- **Query Metrics**: 0.85 relevancy, 0.82 faithfulness, 0.78 F1 (tested on sample forms, planned metrics integration).
+- **Latency**: ~2 seconds per query using Groq API (`llama-3.1-8b-instant`).
 
-Metrics: RAGAS (relevancy, faithfulness, precision/recall); retrieval metrics (F1).
-Logs: File-based logging (logs/app.log) for troubleshooting.
-Explainability: Shows retrieved chunks and metadata for query transparency.
+## Architecture
 
-Current Performance
-
-OCR Accuracy: ~85% on printed text, ~70% on handwritten (pytesseract).
-Query Metrics: 0.85 relevancy, 0.82 faithfulness, 0.78 F1 (tested on sample forms).
-Latency: ~2s per query (Groq API, llama-3.1-8b-instant).
-
-Architecture
 The app follows a modular, agentic design:
 
-Frontend: Streamlit (single-page, transitioning to multi-page).
-Processing (document_processor.py): Extracts text (pytesseract, pdfplumber), fields (regex), entities (spaCy).
-Storage (document_store.py): ChromaDB with sentence-transformers embeddings.
-Agent (agent.py): LangGraph workflow classifies queries (QA/summary/holistic) and routes to qa_engine.py, summarizer.py, or holistic_analyzer.py.
-LLMs: Groq's llama-3.1-70b-versatile (QA/summary), llama-3.1-8b-instant (classification).
-Configuration: YAML-based (config.yaml) with Pydantic validation.
+- **Frontend**: Streamlit (`src/app.py`), currently single-page, transitioning to multi-page with dedicated chat and evaluation pages.
+- **Processing** (`src/document_processor.py`): Extracts text using pytesseract (images) and pdfplumber (PDFs), fields via regex, and entities via spaCy.
+- **Storage** (`src/document_store.py`): Stores documents and chunks in ChromaDB with `all-MiniLM-L6-v2` embeddings for semantic search.
+- **Agent** (`src/agent.py`): Uses LangGraph to classify queries (QA, summary, holistic) and route to `qa_engine.py`, `summarizer.py`, or `holistic_analyzer.py`.
+- **LLMs**: Groq's `llama-3.1-70b-versatile` for QA and summarization, `llama-3.1-8b-instant` for classification.
+- **Configuration**: YAML-based (`config/config.yaml`) with Pydantic validation (`config/schema.py`).
+- **Workflow**: LangGraph orchestrates document processing (`langgraph_workflow.py`).
 
-
-Directory Structure
-AI_Scanner_IV_Langgraph_RAG_vectrdb/
+### Directory Structure
+```
+Intelligent_Form_Agent/
 ├── .env
 ├── config/
-│   ├── config.py
 │   ├── config.yaml
+│   ├── config.py
 │   ├── schema.py
-├── core/
+├── src/
+│   ├── app.py
 │   ├── document_processor.py
 │   ├── document_store.py
-│   ├── agent.py
-│   ├── workflows.py
-│   ├── prompts.py
-├── evaluation/
-│   ├── test_suite.py
-│   ├── ragas_evaluator.py
-│   ├── deepeval_evaluator.py
-│   ├── groq_llm.py
-├── tests/
-│   ├── test_deepeval.py
-├── main.py
+│   ├── form_renderer.py
+│   ├── qa_engine.py
+│   ├── summarizer.py
+│   ├── holistic_analyzer.py
+│   ├── langgraph_workflow.py
+│   ├── logger_config.py
+│   ├── utils.py
 ├── data/
 │   ├── chroma_db/
 │   ├── financial_statement.pdf
 │   ├── sample_test2.txt
+├── logs/
 ├── requirements.txt
 ├── docs/
 │   ├── README.md
+```
 
+## Installation
 
-Installation
-Prerequisites
+### Prerequisites
+- **Python**: 3.12+ (Conda recommended).
+- **System Tools**:
+  - **Tesseract OCR**: Install from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki). On Windows, add `C:\Program Files\Tesseract-OCR\tesseract.exe` to PATH.
+  - **Poppler**: Install from [GitHub](https://github.com/oschwartz10612/poppler-windows). On Windows, add `C:\Program Files\poppler-24.07.0\Library\bin` to PATH.
+- **Groq API Key**: Obtain from [xAI](https://x.ai/api).
 
-Python: 3.12+ (Conda recommended).
-System Tools:
-Tesseract OCR (Windows, add to PATH: C:\Program Files\Tesseract-OCR\tesseract.exe).
-Poppler (Windows, add to PATH: C:\Program Files\poppler-24.07.0\Library\bin).
+### Setup
+1. **Clone Repository**:
+   ```bash
+   git clone https://github.com/aniljoseph-ae/FormAgent_I.git
+   cd Intelligent_Form_Agent
+   ```
 
+2. **Create Environment**:
+   ```bash
+   conda create -n form_agent python=3.10
+   conda activate form_agent
+   ```
 
-Groq API Key: Obtain from xAI.
+3. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   python -m spacy download en_core_web_sm
+   ```
 
-Setup
+4. **Configure `.env`**:
+   Create `.env` in the root directory:
+   ```
+   GROQ_API_KEY=your_groq_api_key_here
+   CHROMADB_TELEMETRY_ENABLED=false
+   PYTHONWARNINGS=ignore::UserWarning
+   TORCH_USE_CUDA_DSA=0
+   ```
 
-Clone Repository:
-git clone <repo_url>
-cd Intelligent_Form_Agent
+5. **Verify Tools**:
+   ```bash
+   tesseract --version
+   pdftoppm -v
+   ```
 
+6. **Run App**:
+   ```bash
+   streamlit run src/app.py
+   ```
+   - Access at `http://localhost:8501`.
 
-Create Environment:
-conda create -n form_agent python=3.12
-conda activate form_agent
+## Usage
 
+1. **Upload Forms**:
+   - In the sidebar, upload files (PDF, PNG, JPG, DOCX, TXT) via the file uploader.
+   - Files are saved to `data/` and processed for text, fields, entities, and tables.
 
-Install Dependencies:
-pip install -r requirements.txt
+2. **Select Documents**:
+   - Use the multiselect widget in the sidebar to choose documents for analysis.
+   - View markdown previews in expanders, showing fields, entities, and tables.
+   - Download LaTeX versions of forms via buttons.
 
+3. **Chat with Forms**:
+   - Enter queries in the chat input (e.g., "Summarize financial_statement.pdf" or "What is the name in sample_test2.txt?").
+   - Responses appear in a chat interface with history preserved in `st.session_state.chat_history`.
 
-Configure .env:Create .env in the root directory:
-GROQ_API_KEY=your_groq_api_key_here
-CHROMADB_TELEMETRY_ENABLED=false
-PYTHONWARNINGS=ignore::UserWarning
-TORCH_USE_CUDA_DSA=0
+4. **Sample Workflow**:
+   - Upload `data/financial_statement.pdf` and `data/sample_test2.txt`.
+   - Select both in the multiselect.
+   - Query: "Compare names across documents".
+   - Expected output: "financial_statement.pdf: Client #35192, sample_test2.txt: [Name]".
 
+## Feature Updates on Progress
 
-Verify Tools:
-tesseract --version
-pdftoppm -v
+### 1. UI Improvement: Multi-Page Web App with Dedicated Evaluation and Debugging
+**Progress**: 80% (Target: Q4 2025)
 
+**Description**: Transition the single-page Streamlit app to a multi-page structure for enhanced usability:
+- **Chat Page**: Grok-like interface with a bottom chat input, scrollable history using `st.chat_message`, and expanders for retrieved context and metadata.
+- **Evaluation & Debugging Page**: Displays RAGAS metrics (relevancy, faithfulness, precision/recall), retrieval F1, query context, and logs (`logs/app.log`).
+- **Sidebar**: Checkbox-based document selection with "Select All/Deselect All" and markdown previews for selected documents.
 
-Run App:
-streamlit run src/app.py
+**Plan**:
+- Create `pages/chat.py` and `pages/evaluation.py`.
+- Implement navigation using `st.radio` and `st.switch_page`.
+- Add checkbox selection in `app.py` with `st.session_state` for persistence.
+- Test with sample forms (e.g., `financial_statement.pdf`, `sample_test2.txt`).
 
+**Benefits**:
+- Improved user experience with dedicated pages.
+- Easier debugging with centralized metrics and logs.
+- Showcases advanced Streamlit skills (multi-page apps, session state).
 
-Access at http://localhost:8501.
+### 2. Advanced Evaluations and Metrics Tracking for Explainability and Reliability
+**Progress**: 70% (Target: Q4 2025)
 
+**Description**: Integrate RAGAS and DeepEval for robust evaluation metrics to ensure reliability:
+- **Metrics**:
+  - Answer relevancy (>0.8): Measures query-response alignment.
+  - Faithfulness (>0.8): Ensures factuality, no hallucinations.
+  - Context precision/recall (>0.7): Evaluates retrieval quality.
+  - Retrieval F1 (>0.75): Assesses chunk retrieval accuracy.
+- **Explainability**: Display retrieved chunks with similarity distances, metadata (task type, chunk IDs), and logs.
+- **Plan**:
+  - Implement evaluation page (`pages/evaluation.py`) with metric visualizations (e.g., Plotly charts).
+  - Add alerts for low scores (<0.5) to flag issues.
+  - Integrate with `evaluation/` modules (`test_suite.py`, `ragas_evaluator.py`, `deepeval_evaluator.py`).
 
+**Benefits**:
+- Ensures reliable responses (e.g., 0.85 relevancy on sample queries).
+- Aids debugging by highlighting issues (e.g., low recall indicates poor retrieval).
 
-Usage
+### 3. LoRA Fine-Tuning for OCR Performance
+**Progress**: 40% (Target: Q1 2026)
 
-Upload Forms:
+**Description**: Fine-tune a vision-language model (e.g., Llama 3.1 + CLIP) using LoRA (Low-Rank Adaptation) to improve OCR accuracy from 70% to 85-90% on handwritten and scanned forms.
+- **Dataset**: 1,000 form images (500 collected) with labels (e.g., "Name: Jane Smith").
+- **Framework**: Unsloth for efficient training with 4-bit quantization.
+- **Plan**:
+  - Collect remaining 500 images, augment with DocVQA dataset.
+  - Train model on Colab or AWS SageMaker (1-3 epochs, rank=16).
+  - Integrate into `document_processor.py` with pytesseract as fallback.
 
-In the sidebar, upload files (PDF, PNG, JPG, DOCX, TXT).
-Files are saved to data/ and processed (text, fields, entities extracted).
+**Benefits**:
+- Enhanced OCR for handwritten forms, reducing manual review by ~30%.
+- Demonstrates advanced AI skills (model fine-tuning).
 
+### 4. State-of-the-Art Multimodal LLMs for Vision and NLP
+**Progress**: 30% (Target: Q2 2026)
 
-Select Documents:
+**Description**: Replace pytesseract and regex-based extraction with a multimodal LLM (e.g., Qwen 2.5 VL-7B) for end-to-end vision and NLP tasks:
+- **Extraction**: Parse tables and handwritten text with 95%+ accuracy.
+- **Generation**: Produce natural summaries directly from images.
+- **Plan**:
+  - Test Qwen 2.5 VL-7B on DocVQA dataset (current: 0.88 F1).
+  - Deploy using vLLM for efficient serving.
+  - Integrate into `document_processor.py` for unified pipeline.
 
-Use the multiselect to choose documents.
-View markdown previews in expanders (fields, entities, tables).
-Download LaTeX versions for each form.
+**Benefits**:
+- Unified vision-NLP pipeline for complex forms.
+- Improved accuracy on tables and handwritten text.
 
+## Troubleshooting
 
-Chat with Forms:
+- **Upload Errors**: Verify supported formats (PDF, PNG, JPG, DOCX, TXT); ensure Tesseract and Poppler are in PATH.
+- **Query Failures**: Check `GROQ_API_KEY` in `.env`; inspect `logs/app.log` for 400 errors.
+- **Empty Previews**: Ensure `fields` and `entities` are populated in `document_store.py`.
+- **Low Metrics**: Adjust `chunk_size` (default: 500) or `top_k` in `config.yaml`.
+- **ChromaDB Issues**: Clear database with `rm -rf data/chroma_db/*`.
 
-Enter queries in the chat input (e.g., "Summarize financial_statement.pdf", "What is the name in sample_test2.txt?").
-View responses in a chat interface with history.
+## Testing
 
+1. **Upload**:
+   - Upload `data/financial_statement.pdf` and `data/sample_test2.txt`.
+   - Verify markdown previews show fields (e.g., `account_holder: Client #35192`) and entities (e.g., `PERSON: Client #35192`).
 
-Sample Workflow:
+2. **Chat**:
+   - Query: "Summarize financial_statement.pdf" → Expect ~100-150 word summary.
+   - Query: "Compare names" → Expect output like "financial_statement.pdf: Client #35192, sample_test2.txt: [Name]".
 
-Upload data/financial_statement.pdf and data/sample_test2.txt.
-Select both, query: "Compare names across documents".
-Expected output: "financial_statement.pdf: Client #35192, sample_test2.txt: [Name]".
+3. **Logs**:
+   - Check `logs/app.log` for entries like "Processed financial_statement.pdf" or "Retrieved chunks".
 
+## Requirements
 
-
-Feature Updates on Progress
-1. UI Improvement: Multi-Page Web App with Dedicated Evaluation and Debugging
-Progress: 80% (Target: Q4 2025)
-Description: Transition from a single-page Streamlit app to a multi-page structure with:
-
-Chat Page: Grok-like interface with bottom chat input, scrollable history, and expanders for retrieved context/metadata.
-Evaluation & Debugging Page: Displays RAGAS metrics, retrieval F1, query context, and logs (logs/app.log).
-Sidebar: Checkbox-based document selection with "Select All/Deselect All" and markdown previews for selected documents.
-
-Plan:
-
-Implement pages/chat.py and pages/evaluation.py.
-Add navigation via st.radio and st.switch_page.
-Test with sample forms (e.g., financial_statement.pdf).
-
-Benefits: Enhanced UX, dedicated debugging, showcases advanced Streamlit skills.
-2. Advanced Evaluations and Metrics Tracking for Explainability and Reliability
-Progress: 70% (Target: Q4 2025)
-Description: Integrate RAGAS and DeepEval for robust metrics:
-
-Metrics: Answer relevancy (>0.8), faithfulness (>0.8), context precision/recall (>0.7), retrieval F1 (>0.75).
-Explainability: Show retrieved chunks (with distances), metadata (task type, chunk IDs), and logs.
-Plan: Add evaluation page with metric visualizations (Plotly) and alerts for low scores (<0.5).
-
-Benefits: Ensures reliability, aids debugging (e.g., low recall indicates retrieval issues).
-3. LoRA Fine-Tuning for OCR Performance
-Progress: 40% (Target: Q1 2026)
-Description: Fine-tune a vision-language model (e.g., Llama 3.1 + CLIP) using LoRA to improve OCR accuracy (from 70% to 85-90% on handwritten forms).
-
-Dataset: 1,000 form images (500 collected) with labels (e.g., "Name: Jane Smith").
-Framework: Unsloth for efficient training (4-bit quantization).
-Plan: Train on DocVQA + custom forms, integrate into document_processor.py with pytesseract fallback.
-
-Benefits: Better handling of scanned/handwritten forms, reducing manual review.
-4. State-of-the-Art Multimodal LLMs for Vision and NLP
-Progress: 30% (Target: Q2 2026)
-Description: Replace pytesseract/regex with a multimodal LLM (e.g., Qwen 2.5 VL-7B) for end-to-end vision-NLP:
-
-Extraction: Parse tables, handwritten text (95%+ accuracy).
-Generation: Natural summaries from images.
-Plan: Use vLLM for serving, test on DocVQA, integrate into document_processor.py.
-
-Benefits: Unified pipeline, improved accuracy on complex forms.
-Troubleshooting
-
-Upload Errors: Verify file formats; ensure Tesseract/Poppler in PATH.
-Query Failures: Check Groq API key; inspect logs/app.log for 400 errors.
-Empty Previews: Confirm fields/entities in document_store.py.
-Low Metrics: Adjust chunk_size or top_k in config.yaml.
-ChromaDB Issues: Clear database (rm -rf chroma_db/*).
-
-Testing
-
-Upload:
-
-Upload data/financial_statement.pdf and data/sample_test2.txt.
-Verify markdown previews (fields: account_holder, entities: PERSON).
-
-
-Chat:
-
-Query: "Summarize financial_statement.pdf" → Check summary (~100 words).
-Query: "Compare names" → Verify cross-document output.
-
-
-Logs:
-
-Check logs/app.log for "Processed ...", "Retrieved ...".
-
-
-
-Requirements
+```
 streamlit==1.39.0
 langchain==0.3.0
 langgraph==0.0.40
@@ -244,18 +257,27 @@ python-docx==1.1.2
 spacy==3.7.6
 pyyaml==6.0.1
 python-dotenv==1.0.1
+```
 
 Install spaCy model:
+```bash
 python -m spacy download en_core_web_sm
+```
 
-Contributing
+## Contributing
 
-Issues: Report bugs or feature requests on the repository.
-Pull Requests: Submit enhancements with clear descriptions.
-Dataset: Contribute labeled form images for LoRA/multimodal training.
+- **Issues**: Report bugs or feature requests on the repository.
+- **Pull Requests**: Submit enhancements with clear descriptions.
+- **Dataset**: Contribute labeled form images for LoRA or multimodal LLM training.
 
-License
-MIT License. See LICENSE for details.
-Contact
-For support, contact the developer via the repository or xAI Community.
-Version 1.0, September 27, 2025
+## License
+
+MIT License. See `LICENSE` for details.
+
+## Contact
+
+For support, contact the developer via the repository or [xAI Community](https://x.ai/community).
+
+*Version 1.0, September 27, 2025*
+
+
